@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 import random
+from tqdm import tqdm
 
 
 def evaluate_perplexity(model, data, target_length):
@@ -11,7 +12,7 @@ def evaluate_perplexity(model, data, target_length):
     total_tokens = 0
     model.eval()
     with torch.no_grad():
-        for seq in data:
+        for seq, _ in data:
             seq_len = seq.size(0)
             if seq_len <= target_length:
                 input_ids = seq.unsqueeze(0)
@@ -21,11 +22,11 @@ def evaluate_perplexity(model, data, target_length):
                 # we truncate the input if it is too long
             output = model(input_ids)
             loss = F.cross_entropy(
-                output.view(-1, model.vocab_size), input_ids.view(-1), reduction="sum"
+                output.view(-1, model.vocab_size)[:-1], input_ids.view(-1).to(model.device)[1:], reduction="sum"
             )
             total_loss += loss.item()
             total_tokens += input_ids.numel()
-    return torch.exp(total_loss / total_tokens)
+    return torch.exp(torch.tensor(total_loss / total_tokens))
 
 
 def fine_tune(model, train_data, val_data, target_length, lambda_factors, n_hat, steps):
@@ -51,11 +52,11 @@ def fine_tune(model, train_data, val_data, target_length, lambda_factors, n_hat,
     best_val_perplexity = float("inf")
     best_model_state = None
 
-    for step in range(steps):
+    for step in tqdm(range(steps), desc="fine tuning step"):
         # Training
         model.train()
         optimizer.zero_grad()
-        seq = random.choice(train_data)
+        seq = random.choice(train_data)[0]
         seq_len = seq.size(0)
         if seq_len <= target_length:
             input_ids = seq.unsqueeze(0)
@@ -63,7 +64,8 @@ def fine_tune(model, train_data, val_data, target_length, lambda_factors, n_hat,
             start_idx = random.randint(0, seq_len - target_length)
             input_ids = seq[start_idx: start_idx + target_length].unsqueeze(0)
         output = model(input_ids)
-        loss = F.cross_entropy(output.view(-1, model.vocab_size), input_ids.view(-1))
+        loss = F.cross_entropy(output.view(-1, model.vocab_size)[:-1],
+                               input_ids.view(-1).to(model.device)[1:])
         loss.backward()
         optimizer.step()
 

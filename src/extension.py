@@ -1,5 +1,6 @@
 from src.search import search_lambda_factors
 from src.finetune import fine_tune
+from src.dataset import get_trainval
 
 
 def progressive_extension(
@@ -25,19 +26,20 @@ def progressive_extension(
     max_iterations : Maximum number of iterations for evolutionary search (\Tau in the paper).
     """
     curr_model = model
-
     lambda_factors_up, n_hat_up = search_lambda_factors(
         curr_model,
         data,
-        128000 / base_length,
+        2,
         population_size,
         num_mutations,
         num_crossovers,
         max_iterations,
     )
 
+    train_dataloader, val_dataloader = get_trainval(data, eos=model.vocab_size+1)
     curr_model = fine_tune(
-        curr_model, data, 128000, lambda_factors_up, n_hat_up, steps=400
+        curr_model, train_dataloader, val_dataloader, base_length*2,
+        lambda_factors_up, n_hat_up, steps=200
     )
 
     curr_model.lambda_factors["128k"] = lambda_factors_up

@@ -8,12 +8,14 @@ class RoPEPositionalEncoding(nn.Module):
     the rope embedding, so of dimension [len(tensor), d_model], as a tensor
     """
 
-    def __init__(self, d_model, max_len=1000, base=100):
+    def __init__(self, d_model, max_len=1000, base=100, device="cuda"):
         super().__init__()
         self.d_model = d_model
         self.max_len = max_len
         self.base = base  # base is the value of theta since theta_i = theta.pow(-2*i/d_model)
-        self.theta = torch.tensor([base ** (-2 * (i // 2) / d_model) for i in range(d_model)])
+        self.theta = torch.tensor([base ** (-2 * (i // 2) / d_model) for i in range(d_model)]).to(device)
+        self.device = device
+        self.to(device)
 
     def forward(self, positions):
         angles = positions.unsqueeze(-1) * self.theta

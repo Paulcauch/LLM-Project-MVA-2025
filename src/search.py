@@ -1,4 +1,5 @@
 import numpy as np
+from tqdm import tqdm
 
 from src.longrope_utils import (initialize_population,
                                 evaluate_population,
@@ -56,7 +57,7 @@ def search_lambda_factors(
     # Init populations
     population = initialize_population(population_size, search_space, model.d_model)
 
-    for _ in range(max_iterations):
+    for _ in tqdm(range(max_iterations), desc="searching for lambda factors"):
         # Get the perplexities for each configurations (population)
         perplexities = evaluate_population(model, data, population)
 

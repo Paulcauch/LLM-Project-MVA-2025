@@ -3,6 +3,7 @@ import torch.nn as nn
 from .rope import RoPEPositionalEncoding
 from .longrope_utils import non_uniform_interpolation
 from .extension import progressive_extension
+from .utils_general import check_valid_ids, truncate_ids
 
 
 class LongRoPEModel(nn.Module):
@@ -14,7 +15,7 @@ class LongRoPEModel(nn.Module):
     max_len : Original context window length of the model.
     """
 
-    def __init__(self, d_model, n_heads, num_layers, vocab_size, max_len):
+    def __init__(self, d_model, n_heads, num_layers, vocab_size, max_len, device="cuda"):
         super().__init__()
         self.d_model = d_model
         self.n_heads = n_heads
@@ -23,12 +24,15 @@ class LongRoPEModel(nn.Module):
         self.max_len = max_len
         self.embedding = nn.Embedding(vocab_size, d_model)
         self.rope = RoPEPositionalEncoding(d_model, max_len)
+        self.device = device
         self.transformers = nn.ModuleList(
             [
                 nn.TransformerEncoderLayer(d_model=d_model, nhead=n_heads)
                 for _ in range(num_layers)
             ]
-        )
+        )  # here we take a vanilla transformers but actually we can just replace it by
+           # a trained model
+        self.out = nn.Linear(d_model, vocab_size)
 
         self.lambda_factors = {
             "4k": None,
@@ -46,22 +50,16 @@ class LongRoPEModel(nn.Module):
         self.extension_ratio = None
         self.base_context_length = max_len
 
+        self.to(device)
+
     def forward(self, input_ids):
+        input_ids = input_ids.to(self.device)
         input_embeddings = self.embedding(input_ids)  # convert the embeddings to vectors
         seq_length = input_ids.size(1)  # n tokens
         positions = torch.arange(seq_length, device=input_ids.device).unsqueeze(0)
         pos_embeddings = self.rope(positions)  # get the embeddings of rope
-
-        if seq_length <= 4096:
-            pos_embeddings = self.apply_interpolation(pos_embeddings, "4k")
-        elif seq_length <= 8192:
-            pos_embeddings = self.apply_interpolation(pos_embeddings, "8k")
-        elif seq_length <= 131072:
-            pos_embeddings = self.apply_interpolation(pos_embeddings, "128k")
-        elif seq_length <= 262144:
-            pos_embeddings = self.apply_interpolation(pos_embeddings, "256k")
-        else:
-            pos_embeddings = self.apply_interpolation(pos_embeddings, "2048k")
+    
+        pos_embeddings = self.apply_interpolation(pos_embeddings, "4k")
 
         if seq_length > self.base_context_length:
             # If seq_len > max_len we truncate the data
@@ -75,8 +73,31 @@ class LongRoPEModel(nn.Module):
 
         for transformer in self.transformers:
             embeddings = transformer(embeddings)
+        
+        embeddings = self.out(embeddings)
 
         return embeddings
+
+    def only_embeddings(self, input_ids):
+        input_ids = input_ids.to(self.device)
+        input_embeddings = self.embedding(input_ids)
+        seq_length = input_ids.size(1)
+        positions = torch.arange(seq_length, device=input_ids.device).unsqueeze(0)
+        pos_embeddings = self.rope(positions)
+    
+        pos_embeddings = self.apply_interpolation(pos_embeddings, "4k")
+
+        if seq_length > self.base_context_length:
+            # If seq_len > max_len we truncate the data
+            pos_embeddings = pos_embeddings[:, : self.base_context_length, :]
+            input_embeddings = input_embeddings[:, : self.base_context_length, :]
+            seq_length = self.base_context_length
+
+        pos_embeddings = pos_embeddings[:, :seq_length, : self.d_model]  # just to make sure..
+
+        embeddings = input_embeddings + pos_embeddings
+
+        return embeddings, (input_embeddings, pos_embeddings)
 
     def apply_interpolation(self, pos_embed, context_length):
         """Apply non-uniform interpolation to position embeddings."""
@@ -85,6 +106,7 @@ class LongRoPEModel(nn.Module):
             self.extension_ratio,
             self.lambda_factors[context_length],
             self.n_hat[context_length],
+            self.d_model
         )
 
     def extend_context(
@@ -108,15 +130,11 @@ class LongRoPEModel(nn.Module):
         num_crossovers : Number of crossovers per iteration.
         max_iterations : Maximum number of iterations for evolutionary search.
         """
-
         self.extension_ratio = target_length / self.rope.max_len
-
         (
             model,
             lambda_factors,
             n_hat,
-            lambda_factors_base,
-            n_hat_base,
         ) = progressive_extension(
             self,
             dataset,
@@ -128,9 +146,9 @@ class LongRoPEModel(nn.Module):
             max_iterations,
         )
 
-        self.lambda_factors = lambda_factors
-        self.lambda_factors_base = lambda_factors_base
-        self.n_hat = n_hat
-        self.n_hat_base = n_hat_base
+        self.lambda_factors["4k"] = lambda_factors
+        #self.lambda_factors_base = lambda_factors_base
+        self.n_hat["4k"] = n_hat
+        #self.n_hat_base = n_hat_base
 
         return model

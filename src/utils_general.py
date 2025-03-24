@@ -1,3 +1,6 @@
+import torch
+
+
 def monotonic_constraint(individual):
     """
     Just to assert lambda_i+1 >= lambda_i
@@ -19,3 +22,18 @@ def check_valid_ids(tensor_list, vocab_size):
         else:
             list_out.append(tensor)
     return list_out
+
+
+def truncate_ids(tensor_list, vocab_size):
+    """
+    truncate the ids
+    """
+    list_out = []
+    for tensor in tensor_list:
+        truncated_tensor = [min(t, vocab_size - 1) for t in tensor]
+        list_out.append(torch.tensor(truncated_tensor))
+    return list_out
+
+
+def flatten_list(nested_list):
+    return [item for sublist in nested_list for item in sublist]

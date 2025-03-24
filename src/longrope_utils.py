@@ -1,10 +1,10 @@
 import torch
 import random
-from src.utils_general import monotonic_constraint
+from src.utils_general import monotonic_constraint, flatten_list
 import torch.nn.functional as F
 
 
-def non_uniform_interpolation(pos_embed, extension_ratio, lambda_factors, n_hat):
+def non_uniform_interpolation(pos_embed, extension_ratio, lambda_factors, n_hat, d_model=256):
     """
     This function implements the two forms of non-uniformities:
     1. Varying RoPE dimensions (lambda_factors)
@@ -16,7 +16,6 @@ def non_uniform_interpolation(pos_embed, extension_ratio, lambda_factors, n_hat)
     extension_ratio is s in the paper: L_extended / L_original where L is the input size
 
     """
-    d_model = pos_embed.shape[-1]
     interpolated_pos = pos_embed.clone()
 
     for i in range(d_model // 2):
@@ -43,8 +42,8 @@ def evaluate_individual(model, data, individual):
     # Set the lambda factors and n_hat for the model from the individual configuration since they
     # are directly used when we call the model
 
-    model.lambda_factors = lambda_factors
-    model.n_hat = n_hat
+    model.lambda_factors["4k"] = lambda_factors
+    model.n_hat["4k"] = n_hat
 
     total_loss = 0
     total_tokens = 0
@@ -56,15 +55,14 @@ def evaluate_individual(model, data, individual):
             input_ids = seq.unsqueeze(0)
 
             output = model(input_ids)
-
             loss = F.cross_entropy(
-                output.view(-1, model.vocab_size), seq.view(-1), reduction="sum"
+                output.view(-1, model.vocab_size)[:-1], seq.view(-1).to(model.device)[1:], reduction="sum"
             )
 
             total_loss += loss.item()
             total_tokens += seq.numel()
 
-    perplexity = torch.exp(total_loss / total_tokens)
+    perplexity = torch.exp(torch.tensor(total_loss / total_tokens))
 
     return perplexity.item()
 
@@ -138,7 +136,7 @@ def initialize_population(population_size, search_space, d_model):
             ],
             "n_hat": random.choice(search_space["n_hat"]),
         }
-        population.append(monotonic_constraint(individual))
+        population.append(individual)
     return population
 
 
@@ -152,9 +150,8 @@ def mutate(parents, num_mutations, d_model):
     mutated_population = []
     for _ in range(num_mutations):
         parent = random.choice(parents)
-        child = {"lambda_i": parent["lambda_i"].clone(), "n_hat": parent["n_hat"]}
-
-        for i in range(d_model):
+        child = {"lambda_i": parent["lambda_i"].copy(), "n_hat": parent["n_hat"]}
+        for i in range(d_model//2):
             if random.random() < 0.1:
                 child["lambda_i"][i] *= random.uniform(0.8, 1.2)
 
@@ -171,9 +168,8 @@ def crossover(parents, num_crossovers, d_model):
     for _ in range(num_crossovers):
         parent1 = random.choice(parents)
         parent2 = random.choice(parents)
-        child = {"lambda_i": parent1["lambda_i"].clone(), "n_hat": parent1["n_hat"]}
-
-        for i in range(d_model):
+        child = {"lambda_i": parent1["lambda_i"].copy(), "n_hat": parent1["n_hat"]}
+        for i in range(d_model//2):
             if random.random() < 0.5:
                 child["lambda_i"][i] = parent2["lambda_i"][i]
 
