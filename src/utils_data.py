@@ -7,7 +7,7 @@ def load_data(data_path, tokenizer, max_length):
 
     tokenized = tokenizer.encode(text_data)
 
-    sequences = [tokenized[i : i + max_length] for i in range(0, len(tokenized), max_length)]
+    sequences = [tokenized[i: i + max_length] for i in range(0, len(tokenized), max_length)]
 
     tensor_data = [torch.tensor(seq, dtype=torch.long) for seq in sequences]
 

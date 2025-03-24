@@ -1,6 +1,9 @@
 import torch
+import torch.nn as nn
 from .rope import RoPEPositionalEncoding
-from longrope_utils import 
+from .longrope_utils import non_uniform_interpolation
+from .extension import progressive_extension
+
 
 class LongRoPEModel(nn.Module):
     """
@@ -44,10 +47,10 @@ class LongRoPEModel(nn.Module):
         self.base_context_length = max_len
 
     def forward(self, input_ids):
-        input_embeddings = self.embedding(input_ids) # convert the embeddings to vectors
-        seq_length = input_ids.size(1) # n tokens
+        input_embeddings = self.embedding(input_ids)  # convert the embeddings to vectors
+        seq_length = input_ids.size(1)  # n tokens
         positions = torch.arange(seq_length, device=input_ids.device).unsqueeze(0)
-        pos_embeddings = self.rope(positions) # get the embeddings of rope
+        pos_embeddings = self.rope(positions)  # get the embeddings of rope
 
         if seq_length <= 4096:
             pos_embeddings = self.apply_interpolation(pos_embeddings, "4k")
@@ -66,7 +69,7 @@ class LongRoPEModel(nn.Module):
             input_embeddings = input_embeddings[:, : self.base_context_length, :]
             seq_length = self.base_context_length
 
-        pos_embeddings = pos_embeddings[:, :seq_length, : self.d_model] # just to make sure..
+        pos_embeddings = pos_embeddings[:, :seq_length, : self.d_model]  # just to make sure..
 
         embeddings = input_embeddings + pos_embeddings
 
@@ -96,7 +99,7 @@ class LongRoPEModel(nn.Module):
         max_iterations,
     ):
         """
-        dataset : tensor dataset, contains the ids of the tokenizer make sure max_length is well choosen.
+        dataset : tensor dataset, contains the ids of the tokenizer make sure max_length is correct.
         target_length : Target context window length.
         max_sequence_length : Maximum sequence length for input data.
         tokenizer: Tokenizer object for encoding input data.

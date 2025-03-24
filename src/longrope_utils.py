@@ -1,5 +1,7 @@
 import torch
 import random
+from src.utils import monotonic_constraint
+import torch.nn.functionnal as F
 
 
 def non_uniform_interpolation(pos_embed, extension_ratio, lambda_factors, n_hat):
@@ -29,60 +31,17 @@ def non_uniform_interpolation(pos_embed, extension_ratio, lambda_factors, n_hat)
     return interpolated_pos
 
 
-def progressive_extension(
-    model,
-    data,
-    base_length,
-    target_length,
-    population_size,
-    num_mutations,
-    num_crossovers,
-    max_iterations,
-):
-    """
-    Extend the context with a non fine tuning phase, then a fine tuning phase
-
-    model : Model to be extended.
-    data : List of tensors containing input ids
-    base_length : Original context window length of the model.
-    target_length : Target context window length
-    population_size : Size of the population for evolutionary search (P in the paper).
-    num_mutations : Number of mutations per iteration in the search (N1 in the paper).
-    num_crossovers : Number of crossovers per iteration in the search (N2 in the paper).
-    max_iterations : Maximum number of iterations for evolutionary search (\Tau in the paper).
-    """
-    curr_model = model
-
-    lambda_factors_up, n_hat_up = search_lambda_factors(
-        curr_model,
-        data,
-        128000 / base_length,
-        population_size,
-        num_mutations,
-        num_crossovers,
-        max_iterations,
-    )
-
-    curr_model = fine_tune(
-        curr_model, data, 128000, lambda_factors_up, n_hat_up, steps=400
-    )
-
-    curr_model.lambda_factors["128k"] = lambda_factors_up
-    curr_model.n_hat["128k"] = n_hat_up
-
-    return (curr_model, lambda_factors_up, n_hat_up,)
-
-
 def evaluate_individual(model, data, individual):
     """
-    Evaluate an individual lambda factor configuration. We compute the perplexity for a specific configuration
+    Evaluate an individual lambda factor configuration. We compute the perplexity for a specific
+    configuration
 
     individual (dict): Lambda factor configuration and n_hat.
     """
     lambda_factors, n_hat = individual["lambda_i"], individual["n_hat"]
 
-    # Set the lambda factors and n_hat for the model from the individual configuration since they are
-    # directly used when we call the model
+    # Set the lambda factors and n_hat for the model from the individual configuration since they
+    # are directly used when we call the model
 
     model.lambda_factors = lambda_factors
     model.n_hat = n_hat
@@ -97,7 +56,7 @@ def evaluate_individual(model, data, individual):
             input_ids = seq.unsqueeze(0)
 
             output = model(input_ids)
-            
+
             loss = F.cross_entropy(
                 output.view(-1, model.vocab_size), seq.view(-1), reduction="sum"
             )
@@ -106,7 +65,7 @@ def evaluate_individual(model, data, individual):
             total_tokens += seq.numel()
 
     perplexity = torch.exp(total_loss / total_tokens)
-    
+
     return perplexity.item()
 
 
@@ -121,7 +80,7 @@ def evaluate_population(model, data, population):
         perplexity = evaluate_individual(model, data, individual)
 
         perplexities.append(perplexity)
-    
+
     return perplexities
 
 
@@ -129,16 +88,12 @@ def initialize_population(population_size, search_space, d_model):
     """
     Initialize the population for evolutionary search.
 
-    This function implements the optimized initial population generation described in Section 3.2,
-    including PI, NTK, and YaRN as initial individuals.
+    as described in the paper, the authors include pi ntk and yarn individuals
 
-    Args:
-        population_size: Number of individuals in the population
-        search_space: Dictionary defining the search space for lambda_i and n_hat
-        d_model: Dimension of the model
 
-    Returns:
-        population: List of individuals, each represented as a dictionary
+    population_size: Number of individuals in the population (P)
+    search_space: Dictionary defining the search space for lambda_i and n_hat
+    d_model: Dimension of the model (d_k)
     """
 
     # Initialize population
@@ -176,13 +131,55 @@ def initialize_population(population_size, search_space, d_model):
 
     population.append(yarn_individual)
 
-    # Generate the rest of the population randomly
     for _ in range(population_size):
         individual = {
             "lambda_i": [
-                random.uniform(*search_space["lambda_i"]) for _ in range(d_model // 2)
+                random.uniform(*search_space["lambda_i"][:2]) for _ in range(d_model // 2)
             ],
             "n_hat": random.choice(search_space["n_hat"]),
         }
-        population.append(apply_monotonic_constraint(individual))
+        population.append(monotonic_constraint(individual))
     return population
+
+
+def mutate(parents, num_mutations, d_model):
+    """
+    parents : Parent population.
+    num_mutations : Number of mutations to perform (N1).
+    d_model : Dimension of the model (d_k).
+
+    """
+    mutated_population = []
+    for _ in range(num_mutations):
+        parent = random.choice(parents)
+        child = {"lambda_i": parent["lambda_i"].clone(), "n_hat": parent["n_hat"]}
+
+        for i in range(d_model):
+            if random.random() < 0.1:
+                child["lambda_i"][i] *= random.uniform(0.8, 1.2)
+
+        if random.random() < 0.1:
+            child["n_hat"] = random.randint(0, d_model)
+
+        mutated_population.append(child)
+
+    return mutated_population
+
+
+def crossover(parents, num_crossovers, d_model):
+    crossover_population = []
+    for _ in range(num_crossovers):
+        parent1 = random.choice(parents)
+        parent2 = random.choice(parents)
+        child = {"lambda_i": parent1["lambda_i"].clone(), "n_hat": parent1["n_hat"]}
+
+        for i in range(d_model):
+            if random.random() < 0.5:
+                child["lambda_i"][i] = parent2["lambda_i"][i]
+
+        if random.random() < 0.5:
+            child["n_hat"] = parent2["n_hat"]
+
+        crossover_population.append(child)
+
+    return crossover_population
