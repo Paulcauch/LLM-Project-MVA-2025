@@ -61,7 +61,7 @@ class LongRoPEModel(nn.Module):
     
         pos_embeddings = self.apply_interpolation(pos_embeddings, "4k")
 
-        if seq_length > self.base_context_length:
+        if seq_length > self.base_context_length and False:
             # If seq_len > max_len we truncate the data
             pos_embeddings = pos_embeddings[:, : self.base_context_length, :]
             input_embeddings = input_embeddings[:, : self.base_context_length, :]
@@ -70,7 +70,6 @@ class LongRoPEModel(nn.Module):
         pos_embeddings = pos_embeddings[:, :seq_length, : self.d_model]  # just to make sure..
 
         embeddings = input_embeddings + pos_embeddings
-
         for transformer in self.transformers:
             embeddings = transformer(embeddings)
         
@@ -87,7 +86,7 @@ class LongRoPEModel(nn.Module):
     
         pos_embeddings = self.apply_interpolation(pos_embeddings, "4k")
 
-        if seq_length > self.base_context_length:
+        if seq_length > self.base_context_length and False: # we disable this part
             # If seq_len > max_len we truncate the data
             pos_embeddings = pos_embeddings[:, : self.base_context_length, :]
             input_embeddings = input_embeddings[:, : self.base_context_length, :]
