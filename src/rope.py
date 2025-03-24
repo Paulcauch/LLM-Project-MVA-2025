@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+
 class RoPEPositionalEncoding(nn.Module):
     """
     Classic rope take as input the positions (for instance tensor(1,2,3,4 ...)) and return
@@ -17,9 +18,9 @@ class RoPEPositionalEncoding(nn.Module):
     def forward(self, positions):
         angles = positions.unsqueeze(-1) * self.theta
         sin_cos = torch.stack([angles.cos(), angles.sin()], dim=-1)
-        return sin_cos.view(*sin_cos.shape[:-2], -1) # [B, input_length, 2*d_model]
+        return sin_cos.view(*sin_cos.shape[:-2], -1)  # [B, input_length, 2*d_model]
 
-    # for instance if u want to plot the embedding in a 2d graph, simply do: 
+    # for instance if u want to plot the embedding in a 2d graph, simply do:
     # rope = RoPEPositionalEncoding(1)
     # out = rope(torch.tensor(np.arange(n)))
     # out is [n x 2], more generally you multiply by two the d_model

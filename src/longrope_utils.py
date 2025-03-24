@@ -1,7 +1,7 @@
 import torch
 import random
-from src.utils import monotonic_constraint
-import torch.nn.functionnal as F
+from src.utils_general import monotonic_constraint
+import torch.nn.functional as F
 
 
 def non_uniform_interpolation(pos_embed, extension_ratio, lambda_factors, n_hat):

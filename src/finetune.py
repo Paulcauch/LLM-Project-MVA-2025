@@ -1,5 +1,5 @@
 import torch
-import torch.nn.functionnal as F
+import torch.nn.functional as F
 import random
 
 
@@ -17,7 +17,7 @@ def evaluate_perplexity(model, data, target_length):
                 input_ids = seq.unsqueeze(0)
             else:
                 start_idx = random.randint(0, seq_len - target_length)
-                input_ids = seq[start_idx: start_idx + target_length].unsqueeze(0) 
+                input_ids = seq[start_idx: start_idx + target_length].unsqueeze(0)
                 # we truncate the input if it is too long
             output = model(input_ids)
             loss = F.cross_entropy(
@@ -61,7 +61,7 @@ def fine_tune(model, train_data, val_data, target_length, lambda_factors, n_hat,
             input_ids = seq.unsqueeze(0)
         else:
             start_idx = random.randint(0, seq_len - target_length)
-            input_ids = seq[start_idx : start_idx + target_length].unsqueeze(0)
+            input_ids = seq[start_idx: start_idx + target_length].unsqueeze(0)
         output = model(input_ids)
         loss = F.cross_entropy(output.view(-1, model.vocab_size), input_ids.view(-1))
         loss.backward()
