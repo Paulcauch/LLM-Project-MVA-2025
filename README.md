@@ -47,6 +47,14 @@ Please note that the github was mainly based on the two following repo: [officia
 
 Since the computations are really heavy (For the ``search`` function, we take about 1 hour for 1 iteration with non trivial parameters with a GPU), the code here is to give a clear insight on how LongRoPE works, how can it be implemented, but we can not reach results since they are experimentals and were showed on large LLM with (really) large datasets and by definition of the problem, we <u>need</u> to perform it on huge context lengths to have results
 
+## Get Start
+
+To run the code, please first run
+
+```bash
+pip install -e .
+```
+
 
 ## Contributors
 
